@@ -1,21 +1,10 @@
 using UnityEngine;
 using UnityEditor;
 using System.Collections;
+using System.Collections.Generic;
 
 [CustomPropertyDrawer( typeof( SmartArrayAttribute ) )]
 public class SmartArrayPropertyDrawer : PropertyDrawer {
-	
-	const string c_addFirst = "Add/First";
-	const string c_addLast = "Add/Last";
-	const string c_removeFirst = "Remove/First";
-	const string c_removeLast = "Remove/Last";
-	
-	static GUIContent[] c_arraySizeMenu = new GUIContent[]{ 
-		new GUIContent( c_addFirst ),
-		new GUIContent( c_addLast ),
-		new GUIContent( c_removeFirst ),
-		new GUIContent( c_removeLast )
-	};
 	
 	public class PropertyReference
 	{
@@ -27,8 +16,16 @@ public class SmartArrayPropertyDrawer : PropertyDrawer {
 	const float c_fieldHeight = 16.0f;
 	const float c_helpboxHeight = 24.0f;
 	
+	bool heightIsChanged = true;
+	float cacheHeight = 0.0f;
+	
+	/// <summary>
+	/// Draw Property.
+	/// </summary>
 	public override void OnGUI (Rect position, SerializedProperty property, GUIContent label)
 	{
+		EditorGUI.BeginChangeCheck();
+		
 		if( property.isArray )
 		{
 			// cache for Right-Click-Menu's callback.
@@ -43,7 +40,7 @@ public class SmartArrayPropertyDrawer : PropertyDrawer {
 				// want open menu?.
 				bool openMenu = WantOpenMenu();
 				Vector3 mousePos = Event.current.mousePosition;
-				
+								
 				// draw array size.
 				EditorGUI.indentLevel++;
 				DrawArraySize( ref position, property, targetObject, targetPropertyPath, openMenu, mousePos );
@@ -61,8 +58,15 @@ public class SmartArrayPropertyDrawer : PropertyDrawer {
 					do
 					{
 						position.height = EditorGUI.GetPropertyHeight( propElement, label, false );
-						EditorGUI.PropertyField( position, propElement );
 						
+						Vector2 pos = EditorGUIUtility.GUIToScreenPoint( new Vector3( position.xMin, position.yMin ) );
+						
+						// draw only inside of screen.
+						if( 0 < pos.y && pos.y < Screen.currentResolution.height + position.height )
+						{
+							EditorGUI.PropertyField( position, propElement );
+						}
+
 						// Right-Click-Menu collision on element header only.
 						if( isFirst )
 						{
@@ -87,11 +91,24 @@ public class SmartArrayPropertyDrawer : PropertyDrawer {
 			position.y += c_helpboxHeight;
 			EditorGUI.EndProperty();
 		}
+		
+		if( EditorGUI.EndChangeCheck() )
+		{
+			heightIsChanged = true;
+		}
 	}
 	
+	/// <summary>
+	/// Gets the height of the property.
+	/// </summary>
 	public override float GetPropertyHeight ( SerializedProperty property, GUIContent label )
 	{
 		float h = 0.0f;
+		
+		if( !heightIsChanged )
+		{
+			return cacheHeight;
+		}
 		
 		if( property.isArray )
 		{
@@ -127,9 +144,15 @@ public class SmartArrayPropertyDrawer : PropertyDrawer {
 			h += c_helpboxHeight;
 		}
 		
+		cacheHeight = h;
+		heightIsChanged = false;
+		
 		return h;
 	}
 	
+	/// <summary>
+	/// Draws the array expander.
+	/// </summary>
 	void DrawArrayExpander( ref Rect position, SerializedProperty property, GUIContent label )
 	{
 		EditorGUI.indentLevel--;
@@ -139,6 +162,9 @@ public class SmartArrayPropertyDrawer : PropertyDrawer {
 		EditorGUI.indentLevel++;
 	}
 	
+	/// <summary>
+	/// Draws the size of the array.
+	/// </summary>
 	void DrawArraySize( ref Rect position, SerializedProperty property, Object targetObject, string targetPropertyPath, bool openMenu, Vector3 mousePos )
 	{
 		property = property.Copy();
@@ -152,6 +178,9 @@ public class SmartArrayPropertyDrawer : PropertyDrawer {
 		position.y += EditorGUI.GetPropertyHeight( property );
 	}
 	
+	/// <summary>
+	/// Wants the open menu?.
+	/// </summary>
 	bool WantOpenMenu()
 	{
 		return 
@@ -159,15 +188,21 @@ public class SmartArrayPropertyDrawer : PropertyDrawer {
 			Event.current.button == 1;							// mouse right button.
 	}
 	
+	/// <summary>
+	/// Opens the array size field menu.
+	/// </summary>
 	void OpenArraySizeFieldMenu( Object targetObject, string targetPropertyPath, Vector3 mousePos )
 	{
 		PropertyReference propRef = new PropertyReference();
 		propRef.target = targetObject;
 		propRef.path   = targetPropertyPath;
 		Rect menuRect = new Rect( mousePos.x, mousePos.y, 0, 0 );
-		EditorUtility.DisplayCustomMenu( menuRect, c_arraySizeMenu, -1, SelectArraySizeMenu, propRef );
+		EditorUtility.DisplayCustomMenu( menuRect, CreateArraySizeMenuContents(), -1, SelectArraySizeMenuCallback, propRef );
 	}
 	
+	/// <summary>
+	/// Opens the array element menu.
+	/// </summary>
 	void OpenArrayElementMenu( Object targetObject, string targetPropertyPath, int index, Vector3 mousePos )
 	{
 		PropertyReference propRef = new PropertyReference();
@@ -175,22 +210,28 @@ public class SmartArrayPropertyDrawer : PropertyDrawer {
 		propRef.path   = targetPropertyPath;
 		propRef.index   = index;
 		Rect menuRect = new Rect( mousePos.x, mousePos.y, 0, 0 );
-		EditorUtility.DisplayCustomMenu( menuRect, CreateArrayElementMenuContents( index ), -1, SelectArrayElementMenu, propRef );
+		EditorUtility.DisplayCustomMenu( menuRect, CreateArrayElementMenuContents( index ), -1, SelectArrayElementMenuCallback, propRef );
 	}
 	
-	GUIContent[] CreateArraySizeMenuContents( int index )
+	/// <summary>
+	/// Creates the array size menu contents.
+	/// </summary>
+	GUIContent[] CreateArraySizeMenuContents()
 	{	
 		GUIContent[] retval = new GUIContent[]{ 
 			new GUIContent( "Add/First" ),
 			new GUIContent( "Add/Last" ),
 			new GUIContent( "Remove/First" ),
-			new GUIContent( "Remove/Last" )
+			new GUIContent( "Remove/Last" ),
 		};
 			
 		return retval;
 	}
 	
-	void SelectArraySizeMenu( object userData, string[] options, int selected )
+	/// <summary>
+	/// Selects the array size menu's Callback.
+	/// </summary>
+	void SelectArraySizeMenuCallback( object userData, string[] options, int selected )
 	{
 		PropertyReference propRef = (PropertyReference)userData;
 		var so = new SerializedObject( propRef.target );
@@ -201,11 +242,13 @@ public class SmartArrayPropertyDrawer : PropertyDrawer {
 		case 0:	// Add/First
 			prop.InsertArrayElementAtIndex( 0 );
 			so.ApplyModifiedProperties();
+			heightIsChanged = true;
 			break;
 			
 		case 1:	// Add/Last
 			prop.InsertArrayElementAtIndex( Mathf.Max( 0, prop.arraySize - 1 ) );
 			so.ApplyModifiedProperties();
+			heightIsChanged = true;
 			break;
 			
 		case 2:	// Remove/First
@@ -213,6 +256,7 @@ public class SmartArrayPropertyDrawer : PropertyDrawer {
 			{
 				prop.DeleteArrayElementAtIndex( 0 );
 				so.ApplyModifiedProperties();
+				heightIsChanged = true;
 			}
 			break;
 			
@@ -221,6 +265,7 @@ public class SmartArrayPropertyDrawer : PropertyDrawer {
 			{
 				prop.DeleteArrayElementAtIndex( Mathf.Max( 0, prop.arraySize - 1 ) );
 				so.ApplyModifiedProperties();
+				heightIsChanged = true;
 			}
 			break;
 			
@@ -230,9 +275,12 @@ public class SmartArrayPropertyDrawer : PropertyDrawer {
 		}
 	}
 	
+	/// <summary>
+	/// Creates the array element menu contents.
+	/// </summary>
 	GUIContent[] CreateArrayElementMenuContents( int index )
 	{
-		GUIContent[] retval = new GUIContent[3]
+		GUIContent[] retval = new GUIContent[]
 		{
 			new GUIContent( "Add/Before \'Element " + index + "\'" ),
 			new GUIContent( "Add/After \'Element " + index + "\'" ),
@@ -242,7 +290,10 @@ public class SmartArrayPropertyDrawer : PropertyDrawer {
 		return retval;
 	}
 	
-	void SelectArrayElementMenu( object userData, string[] options, int selected )
+	/// <summary>
+	/// Selects the array element menu's Callback.
+	/// </summary>
+	void SelectArrayElementMenuCallback( object userData, string[] options, int selected )
 	{
 		PropertyReference propRef = (PropertyReference)userData;
 		var so = new SerializedObject( propRef.target );
@@ -254,19 +305,22 @@ public class SmartArrayPropertyDrawer : PropertyDrawer {
 		case 0: // Add/Before Element X.
 			prop.InsertArrayElementAtIndex( i );
 			so.ApplyModifiedProperties();
+			heightIsChanged = true;
 			break;
 		case 1: // Add/After Element X.
 			prop.InsertArrayElementAtIndex( i + 1 );
 			so.ApplyModifiedProperties();
+			heightIsChanged = true;
 			break;
 		case 2: // Delete/Element X.
 			if( prop.arraySize > 0 )
 			{
 				prop.DeleteArrayElementAtIndex( Mathf.Max( 0, i ) );
 				so.ApplyModifiedProperties();
+				heightIsChanged = true;
 			}
 			break;
-
+			
 		default:
 			Debug.Log( "Undefined menu item is selected = " + options[ selected ] );
 			break;

@@ -3,10 +3,12 @@ using System.Collections;
 
 public class Sample : MonoBehaviour {
 
-	[SmartArray]
+	//[SmartArray]
 	public int [] intArray;
-	[SmartArray]
-	public MyClass [] myclassArray;
+	//[SmartArray]
+	public Color [] floatArray;
+	//[SmartArray]
+	//public MyClass [] myclassArray;
 }
 
 [System.Serializable]
